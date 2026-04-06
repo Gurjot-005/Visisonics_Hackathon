@@ -1,4 +1,4 @@
-from explainability.schemas import ScoreBundle, ConstraintResult
+from explainability.schemas import ScoreBundle, ConstraintResult, confidence_band
 
 ROTATION_KEYWORDS = [
     "opening", "unscrewing", "turning", "rotating", "twisting",
@@ -19,14 +19,12 @@ def build_reason(
 ) -> str:
     parts = []
 
-    # 🔹 Visual reasoning (UPDATED wording)
     parts.append(
         f"Selected for query '{query}' with visual similarity score "
         f"{scores.visual_score:.2f} (alignment between visual features "
         f"and text embedding)."
     )
 
-    # 🔹 Motion reasoning
     if scores.motion_score > 0.60:
         parts.append(
             f"Strong motion detected (optical flow score {scores.motion_score:.2f}), "
@@ -38,10 +36,9 @@ def build_reason(
         )
     elif scores.motion_score <= 0.10:
         parts.append(
-            f"Very low motion (score {scores.motion_score:.2f}) — this clip may be static."
+            f"Very low motion (score {scores.motion_score:.2f}) - this clip may be static."
         )
 
-    # 🔹 Rotation reasoning
     if rotation_inferred:
         parts.append(
             f"Rotational motion detected (score {scores.rotation_score:.2f}), "
@@ -52,28 +49,25 @@ def build_reason(
             f"Partial rotational movement observed (score {scores.rotation_score:.2f})."
         )
 
-    # 🔹 Object reasoning (🔥 FIXED — no YOLO)
     if scores.object_score > 0.60:
         parts.append(
-            f"Strong object interaction detected (score {scores.object_score:.2f}), "
-            f"supported by hand presence, motion, and edge patterns."
+            f"Strong query-relevant object evidence detected (score {scores.object_score:.2f})."
         )
     elif scores.object_score > 0.20:
         parts.append(
-            f"Weak object interaction detected (score {scores.object_score:.2f})."
+            f"Weak query-relevant object evidence detected (score {scores.object_score:.2f})."
         )
     else:
         parts.append(
-            f"No strong object interaction detected (score {scores.object_score:.2f})."
+            f"No strong query-relevant object evidence detected (score {scores.object_score:.2f})."
         )
 
-    # 🔹 Final score
     parts.append(
         f"Final fused confidence: {scores.confidence:.2f} "
-        f"(visual×0.40 + motion×0.30 + rotation×0.15 + object×0.15)."
+        f"(visual x 0.40 + motion x 0.30 + rotation x 0.15 + object x 0.15)."
     )
+    parts.append(f"Confidence band: {confidence_band(scores.confidence)}.")
 
-    # 🔹 Constraints
     if not constraints.passed:
         parts.append(
             f"CONSTRAINT FAILED: {', '.join(constraints.failed_rules)}. "

@@ -1,46 +1,66 @@
-import torch
-import torchvision.models as models
-import torchvision.transforms as transforms
 import numpy as np
-from typing import List
-from core.frame_sampler import Clip
+import open_clip
+import torch
+from PIL import Image
+from pathlib import Path
+
+
+LOCAL_PRETRAINED = Path(
+    "C:/Users/HP/.cache/huggingface/hub/models--apple--MobileCLIP-S1-OpenCLIP/"
+    "snapshots/59d35241939f6942255489b83c9068e48ebf57f8/open_clip_model.safetensors"
+)
 
 
 class VisualEncoder:
+    BATCH_SIZE = 32
+
     def __init__(self):
-        # ✅ updated weights API (fix warning)
-        self.model = models.mobilenet_v3_small(weights="DEFAULT")
-        self.model.classifier = torch.nn.Identity()
+        print("[visual_encoder] Loading MobileCLIP-S1 (lightweight)...")
+
+        self.device = "cpu"
+        pretrained = str(LOCAL_PRETRAINED) if LOCAL_PRETRAINED.exists() else "datacompdr"
+        self.model, _, self.preprocess = open_clip.create_model_and_transforms(
+            "MobileCLIP-S1",
+            pretrained=pretrained,
+        )
+        self.model.to(self.device)
         self.model.eval()
 
-        # ✅ projection to match MiniLM (384)
-        self.proj = torch.nn.Linear(576, 384)
-
-        self.transform = transforms.Compose([
-            transforms.ToPILImage(),
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225]
-            )
-        ])
-
-        print("[visual_encoder] MobileNetV3 + projection loaded")
-
-    def encode_frame(self, frame: np.ndarray) -> np.ndarray:
-        img = self.transform(frame).unsqueeze(0)
+    def encode_frame(self, frame):
+        image = Image.fromarray(frame)
+        image = self.preprocess(image).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
-            emb = self.model(img)      # (1, 576)
-            emb = self.proj(emb)       # (1, 384)
+            embedding = self.model.encode_image(image)
 
-        emb = emb.squeeze().numpy()
-        return emb / (np.linalg.norm(emb) + 1e-8)
+        embedding = embedding / embedding.norm(dim=-1, keepdim=True)
+        return embedding.squeeze().cpu().numpy()
 
-    def encode_clip(self, clip: Clip) -> np.ndarray:
-        # ⚡ speed optimization (use first frame only)
-        return self.encode_frame(clip.frames[0])
+    def encode_frames_batch(self, frames):
+        if not frames:
+            return np.empty((0, 0), dtype=np.float32)
 
-    def encode_all_clips(self, clips: List[Clip]) -> np.ndarray:
-        return np.stack([self.encode_clip(c) for c in clips], axis=0)
+        batches = []
+        for start in range(0, len(frames), self.BATCH_SIZE):
+            batch_frames = frames[start:start + self.BATCH_SIZE]
+            images = [
+                self.preprocess(Image.fromarray(frame))
+                for frame in batch_frames
+            ]
+            image_tensor = torch.stack(images).to(self.device)
+
+            with torch.no_grad():
+                embedding = self.model.encode_image(image_tensor)
+
+            embedding = embedding / embedding.norm(dim=-1, keepdim=True)
+            batches.append(embedding.cpu().numpy())
+
+        return np.concatenate(batches, axis=0).astype(np.float32)
+
+    @staticmethod
+    def representative_frame(clip):
+        return clip.frames[len(clip.frames) // 2]
+
+    def encode_all_clips(self, clips):
+        frames = [self.representative_frame(clip) for clip in clips]
+        return self.encode_frames_batch(frames)

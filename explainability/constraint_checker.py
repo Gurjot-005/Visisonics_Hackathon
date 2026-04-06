@@ -1,23 +1,24 @@
-from explainability.schemas import ScoreBundle, ConstraintResult
-
-RULES = {
-    "motion_floor":    lambda s: s.motion_score > 0.10,
-    "visual_floor":    lambda s: s.visual_score > 0.25,
-    "object_floor":    lambda s: s.object_score > 0.10,
-    "confidence_floor": lambda s: s.confidence > 0.20,
-}
-
-WARNINGS = {
-    "low_rotation":  lambda s: s.rotation_score < 0.15,
-    "low_motion":    lambda s: s.motion_score < 0.30,
-}
+from explainability.schemas import ConstraintResult
 
 
-def check(scores: ScoreBundle) -> ConstraintResult:
-    failed = [name for name, rule in RULES.items() if not rule(scores)]
-    warns  = [name for name, rule in WARNINGS.items() if rule(scores)]
+def check(scores):
+    passed = True
+    failed_rules = []
+    warnings = []
+
+    # 🔥 HARD RULE
+    if scores.motion_score < 0.10:
+        passed = False
+        failed_rules.append("motion_floor")
+
+    if scores.rotation_score < 0.1:
+        warnings.append("low_rotation")
+
+    if scores.motion_score < 0.2:
+        warnings.append("low_motion")
+
     return ConstraintResult(
-        passed=len(failed) == 0,
-        failed_rules=failed,
-        warnings=warns,
+        passed=passed,
+        failed_rules=failed_rules,
+        warnings=warnings,
     )

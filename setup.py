@@ -13,6 +13,7 @@ setup(
         "torch==2.3.0",
         "torchvision==0.18.0",
         "huggingface-hub==0.23.4",
+        "mediapipe==0.10.33",
         "Pillow==10.3.0",
     ],
     python_requires=">=3.10",

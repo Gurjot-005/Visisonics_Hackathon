@@ -32,8 +32,7 @@ def sample_clips(video_path: str, fps: float = 2.0, clip_duration: float = 1.0, 
         if not ret:
             break
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        frame_resized = cv2.resize(frame_rgb, (224, 224))
-        all_frames.append(frame_resized)
+        all_frames.append(frame_rgb)
         all_timestamps.append(frame_idx / video_fps)
         frame_idx += frame_interval
 
